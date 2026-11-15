@@ -85,9 +85,6 @@
             <button onclick='exportExcel()'>Eksport Excel</button>
             <input type='file' id='excelFile' accept='.xlsx,.xls'>
             <input id='search' placeholder='Søk person'>
-            <select id='yearFilter'></select>
-            <select id='personFilter'></select>
-            <select id='projectFilter'></select>
         </div>
         <div class='card'>
             <table>
@@ -121,6 +118,9 @@
             </table>
         </div>
         <div class='card wrap'>
+            <select id='yearFilter'></select>
+            <select id='personFilter'></select>
+            <select id='projectFilter'></select>
             <h3>Ukevis allokering</h3>
             <table id='weekTable'></table>
         </div>
