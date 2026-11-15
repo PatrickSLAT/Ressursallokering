@@ -1,35 +1,273 @@
 <!DOCTYPE html>
 <html lang="no">
-<head>
-    <meta charset="UTF-8">
-    <title>Ressursallokering Metode</title>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Ressursallokering Metode V17</title>
+        <style>
+            body {
+                font-family: Segoe UI,Arial;
+                background: #f4f6f9;
+                margin: 20px
+            }
 
-    <link rel="stylesheet" href="css/main.css">
-    <link rel="stylesheet" href="css/dashboard.css">
-    <link rel="stylesheet" href="css/tables.css">
+            .wood {
+                font-size: 42px;
+                font-weight: 700;
+                color: #17384d
+            }
 
-    <script defer src="js/storage.js"></script>
-    <script defer src="js/allocation.js"></script>
-    <script defer src="js/dashboard.js"></script>
-    <script defer src="js/filters.js"></script>
-    <script defer src="js/excel.js"></script>
-    <script defer src="js/app.js"></script>
-</head>
+            .card {
+                background: #fff;
+                padding: 12px;
+                border-radius: 8px;
+                margin-bottom: 12px
+            }
 
-<body>
+            .toolbar>* {
+                margin: 4px
+            }
 
-<header>
-    <h1>WOOD</h1>
-    <h2>Ressursallokering Metode 1</h2>
-</header>
+            .wrap {
+                overflow: auto;
+                max-height: 700px
+            }
 
-<section id="dashboard"></section>
+            table {
+                border-collapse: collapse;
+                width: 100%
+            }
 
-<section id="filters"></section>
+            th,td {
+                border: 1px solid #ccc;
+                padding: 6px;
+                text-align: center
+            }
 
-<section id="resourceTable"></section>
+            th {
+                background: #1f4e79;
+                color: #fff;
+                position: sticky;
+                top: 0
+            }
 
-<section id="weekAllocation"></section>
+            .sticky {
+                position: sticky;
+                left: 0;
+                background: #fff;
+                font-weight: 700
+            }
 
-</body>
+            .green {
+                background: #c6efce
+            }
+
+            .yellow {
+                background: #ffe699
+            }
+
+            .red {
+                background: #f4b6b6
+            }
+
+            input,select,button {
+                padding: 6px
+            }
+        </style>
+        <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    </head>
+    <body>
+        <div class='wood'>WOOD</div>
+        <h1>Ressursallokering Metode V17</h1>
+        <div class='card toolbar'>
+            <button onclick='addRow()'>Ny person/prosjekt</button>
+            <button onclick='saveData()'>Lagre</button>
+            <button onclick='exportExcel()'>Eksport Excel</button>
+            <input type='file' id='excelFile' accept='.xlsx,.xls'>
+            <input id='search' placeholder='Søk person'>
+            <select id='yearFilter'></select>
+            <select id='personFilter'></select>
+            <select id='projectFilter'></select>
+        </div>
+        <div class='card'>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Person</th>
+                        <th>Prosjekt</th>
+                        <th>Timer</th>
+                        <th>Uker</th>
+                        <th>Startdato</th>
+                        <th>%</th>
+                        <th>Slett</th>
+                    </tr>
+                </thead>
+                <tbody id='rows'></tbody>
+            </table>
+        </div>
+        <div class='card'>
+            <h3>Total personbelastning</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Person</th>
+                        <th>Timer</th>
+                        <th>Belastning</th>
+                        <th>Ledig</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id='summary'></tbody>
+            </table>
+        </div>
+        <div class='card wrap'>
+            <h3>Ukevis allokering</h3>
+            <table id='weekTable'></table>
+        </div>
+        <script>
+            const CAP = 1850 / 52;
+            let data = JSON.parse(localStorage.getItem('metode_v17') || '[]');
+            function isoWeekYear(dt) {
+                const d = new Date(dt);
+                d.setHours(0, 0, 0, 0);
+                d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+                const y = d.getFullYear();
+                const w1 = new Date(y,0,4);
+                return {
+                    year: y,
+                    week: 1 + Math.round(((d - w1) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7)
+                }
+            }
+            function projWeeks(start, weeks) {
+                let a = [];
+                let d = new Date(start);
+                for (let i = 0; i < weeks; i++) {
+                    let x = new Date(d);
+                    x.setDate(d.getDate() + i * 7);
+                    a.push(isoWeekYear(x));
+                }
+                return a;
+            }
+            function saveData() {
+                localStorage.setItem('metode_v17', JSON.stringify(data));
+                alert('Lagret');
+            }
+            function addRow() {
+                data.push({
+                    person: '',
+                    project: '',
+                    hours: 0,
+                    weeks: 1,
+                    startDate: new Date().toISOString().split('T')[0]
+                });
+                render();
+            }
+            function upd(i, f, v) {
+                data[i][f] = (f === 'person' || f === 'project' || f === 'startDate') ? v : Number(v);
+                localStorage.setItem('metode_v17', JSON.stringify(data));
+                render();
+            }
+            function delRow(i) {
+                data.splice(i, 1);
+                render();
+            }
+            function exportExcel() {
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Ressurser');
+                XLSX.writeFile(wb, 'Ressursallokering_V17.xlsx');
+            }
+            window.onload = () => {
+                excelFile.onchange = e => {
+                    const f = e.target.files[0];
+                    if (!f)
+                        return;
+                    const r = new FileReader();
+                    r.onload = x => {
+                        const wb = XLSX.read(x.target.result, {
+                            type: 'array'
+                        });
+                        data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                        localStorage.setItem('metode_v17', JSON.stringify(data));
+                        render();
+                    }
+                    ;
+                    r.readAsArrayBuffer(f);
+                }
+                ;
+                render();
+            }
+            function render() {
+                let s = (search.value || '').toLowerCase();
+                let years = [...new Set(data.flatMap(d => projWeeks(d.startDate || new Date(), d.weeks || 1).map(x => String(x.year))))].sort();
+                let persons = [...new Set(data.map(x => x.person).filter(Boolean))];
+                let projects = [...new Set(data.map(x => x.project).filter(Boolean))];
+                let yv = yearFilter.value || ''
+                  , pv = personFilter.value || ''
+                  , rv = projectFilter.value || '';
+                yearFilter.innerHTML = '<option value="">Alle år</option>' + years.map(y => `<option ${y === yv ? 'selected' : ''}>${y}</option>`).join('');
+                personFilter.innerHTML = '<option value="">Alle personer</option>' + persons.map(p => `<option ${p === pv ? 'selected' : ''}>${p}</option>`).join('');
+                projectFilter.innerHTML = '<option value="">Alle prosjekter</option>' + projects.map(p => `<option ${p === rv ? 'selected' : ''}>${p}</option>`).join('');
+                let totals = {}
+                  , r = '';
+                data.forEach( (d, i) => {
+                    let pct = ((d.hours / Math.max(1, d.weeks)) / CAP) * 100;
+                    totals[d.person] = totals[d.person] || {
+                        h: 0,
+                        p: 0
+                    };
+                    totals[d.person].h += +d.hours;
+                    totals[d.person].p += pct;
+                    if (s && !String(d.person).toLowerCase().includes(s))
+                        return;
+                    r += `<tr><td><input value="${d.person || ''}" onchange="upd(${i},'person',this.value)"></td><td><input value="${d.project || ''}" onchange="upd(${i},'project',this.value)"></td><td><input type='number' value='${d.hours || 0}' onchange="upd(${i},'hours',this.value)"></td><td><input type='number' value='${d.weeks || 1}' onchange="upd(${i},'weeks',this.value)"></td><td><input type='date' value='${d.startDate || ''}' onchange="upd(${i},'startDate',this.value)"></td><td>${pct.toFixed(1)}%</td><td><button onclick='delRow(${i})'>X</button></td></tr>`
+                }
+                );
+                rows.innerHTML = r;
+                let sm = '';
+                Object.entries(totals).forEach( ([p,v]) => {
+                    let cls = v.p > 100 ? 'red' : v.p >= 80 ? 'yellow' : 'green';
+                    let st = v.p > 100 ? 'Overbelastet' : v.p >= 80 ? 'Nær kapasitet' : 'Tilgjengelig';
+                    sm += `<tr class='${cls}'><td>${p}</td><td>${Math.round(v.h)}</td><td>${v.p.toFixed(1)}%</td><td>${Math.max(0, 100 - v.p).toFixed(1)}%</td><td>${st}</td></tr>`
+                }
+                );
+                summary.innerHTML = sm;
+                let h = '<tr><th class="sticky">Person</th>';
+                for (let i = 1; i <= 53; i++)
+                    h += '<th>' + i + '</th>';
+                h += '</tr>';
+                persons.filter(p => (!pv || p === pv) && (!s || p.toLowerCase().includes(s))).forEach(p => {
+                    h += `<tr><td class='sticky'>${p}</td>`;
+                    for (let wk = 1; wk <= 53; wk++) {
+                        let pct = 0
+                          , tt = [];
+                        data.filter(d => d.person === p && (!rv || d.project === rv)).forEach(d => projWeeks(d.startDate || new Date(), d.weeks || 1).forEach(w => {
+                            if (yv && String(w.year) !== yv)
+                                return;
+                            if (w.week === wk) {
+                                pct += ((d.hours / d.weeks) / CAP) * 100;
+                                tt.push(d.project);
+                            }
+                        }
+                        ));
+                        let c = pct > 100 ? '#f4b6b6' : pct >= 80 ? '#ffe699' : pct > 0 ? '#c6efce' : '';
+                        h += `<td title='${[...new Set(tt)].join(', ')}' style='background:${c}'>${pct ? Math.round(pct) : ''}</td>`;
+                    }
+                    h += '</tr>';
+                }
+                );
+                weekTable.innerHTML = h;
+            }
+            document.addEventListener('input', e => {
+                if (e.target.id === 'search')
+                    render();
+            }
+            );
+            document.addEventListener('change', e => {
+                if (['yearFilter', 'personFilter', 'projectFilter'].includes(e.target.id))
+                    render();
+            }
+            );
+        </script>
+    </body>
 </html>
